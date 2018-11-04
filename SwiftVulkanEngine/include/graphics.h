@@ -9,7 +9,8 @@
 
 #include <iostream>
 #include <vector>
-
+#include <map>
+#include <optional>
 
 
 #include "glm/glm.hpp"
@@ -43,6 +44,19 @@ namespace graphics {
 #define MAX_KEYS		1024
 #define MAX_BUTTONS		32
 
+
+	/**@brief QueueFamilyIndices class to set up rendering queues to draw and UV objects */
+
+	struct QueueFamilyIndices {
+		std::optional<uint32_t> graphicsFamily;
+
+		bool isComplete() {
+			return graphicsFamily.has_value();
+		}
+	};
+
+
+
 	/**
 	@brief Window class to upen up a window for display purposes
 	@param m_Window used to have the window's current context
@@ -60,12 +74,12 @@ namespace graphics {
 
 			private:
 				friend struct GLFWwindow;
-				VkInstance instance;
+				VkInstance instance;			//Vulkan instance variable
 				const char *m_Title;
 				int m_Width, m_Height;
 				bool m_Closed;
 				VkDebugUtilsMessengerEXT callback;		//Vulkan callback
-
+				VkPhysicalDevice physicalDevice = VK_NULL_HANDLE; // physical device used to work vulkan
 
 
 				/*Define Keys and buttons*/
@@ -83,6 +97,7 @@ namespace graphics {
 				~Window();
 				void clear() const;
 				void update();
+				void cleanup();				//Cleans up window instance
 				bool closed() const;
 
 				/*Screen Width*/
@@ -99,12 +114,26 @@ namespace graphics {
 				bool checkValidationLayerSupport();
 				void setupDebugCallback();
 				std::vector<const char*> Window::getRequiredExtensions();  //get extensions in vulkan
+				static VKAPI_ATTR VkBool32 VKAPI_CALL Window::debugCallback(
+					VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+					VkDebugUtilsMessageTypeFlagsEXT messageType,
+					const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+					void* pUserData) {
+
+					std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+					return VK_FALSE;
+				}						//Callbacks for debug messengers	
 
 			private:
 				bool init();
-				/*init Vulkan*/
+				/*Vulkan functions*/
 				void initVulkan();
 				void createInstance();
+				void pickPhysicalDevice();	//pick graphics card do work on
+				bool isDeviceSuitable(VkPhysicalDevice device);   // check to see if device is suitable for Vulkan
+				QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);  //find Queue families
+				void createLogicalDevice();						//Create device with chosen physical device
 
 				/*Input Callbacks*/
 				friend static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -114,6 +143,8 @@ namespace graphics {
 
 
 			};
+
+			
 
 
 		}

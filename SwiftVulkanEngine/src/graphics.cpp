@@ -3,6 +3,25 @@
 namespace sa3d {
 	namespace graphics {
 
+		//Creates Debug messenger
+		VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pCallback) {
+			auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+			std::cout << "Vulkan Debug Utils Messenger Declared." << std::endl;
+			if (func != nullptr){
+				std::cout << "Vulkan Debug Utils Messenger initialized." << std::endl;
+				return func(instance, pCreateInfo, pAllocator, pCallback);
+			}
+			else {
+				return VK_ERROR_EXTENSION_NOT_PRESENT;
+			}
+		}
+		//Destroy debug messenger utility
+		void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT callback, const VkAllocationCallbacks* pAllocator) {
+			auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+			if (func != nullptr) {
+				func(instance, callback, pAllocator);
+			}
+		}
 
 
 		void window_resize(GLFWwindow *window, int width, int height);
@@ -29,7 +48,7 @@ namespace sa3d {
 		}
 		Window::~Window()
 		{
-			vkDestroyInstance(instance, nullptr);
+			//vkDestroyInstance(instance, nullptr);
 
 			//glfwDestroyWindow(m_Window);
 
@@ -75,15 +94,27 @@ namespace sa3d {
 		{
 			createInstance();
 			setupDebugCallback();
-
-
+			pickPhysicalDevice();
+			createLogicalDevice();
 
 		}
 
 		void Window::setupDebugCallback() {
+			
 			if (!enableValidationLayers) return;
 
+			VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+			createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+			createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+			createInfo.pfnUserCallback = debugCallback;
+
+			if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &callback) != VK_SUCCESS) {
+				throw std::runtime_error("failed to set up debug callback!");
+			}
+
 		}
+		
 
 		//create vulkan instance
 		void Window::createInstance() {
@@ -145,6 +176,79 @@ namespace sa3d {
 
 
 		}
+
+		void Window::pickPhysicalDevice() {
+			
+			
+			uint32_t deviceCount = 0;
+			vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+			//If no GPU through this error message
+			if (deviceCount == 0) {
+				throw std::runtime_error("failed to find GPUs with Vulkan support!");
+			}
+
+			std::vector<VkPhysicalDevice> devices(deviceCount);
+			vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+			for (const auto& device : devices) {
+				if (isDeviceSuitable(device)) {
+					physicalDevice = device;
+					break;
+				}
+			}
+
+			if (physicalDevice == VK_NULL_HANDLE) {
+				throw std::runtime_error("failed to find a suitable GPU!");
+			}
+
+		}
+
+		bool Window::isDeviceSuitable(VkPhysicalDevice device) {
+
+			QueueFamilyIndices indices = findQueueFamilies(device);
+
+			return indices.isComplete();
+		}
+
+		QueueFamilyIndices Window::findQueueFamilies(VkPhysicalDevice device) {
+			QueueFamilyIndices indices;
+			uint32_t queueFamilyCount = 0;
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+			std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+	
+			int i = 0;
+			for (const auto& queueFamily : queueFamilies) {
+				if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+					indices.graphicsFamily = i;
+				}
+				
+				if (indices.isComplete()) {
+					break;
+				}
+
+				i++;
+			}
+			return indices;
+		}
+
+		void Window::createLogicalDevice() {
+			QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+			queueCreateInfo.queueCount = 1;
+
+			//Assign priority to queues to make them reorder
+			float queuePriority = 1.0f;
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+
+			VkPhysicalDeviceFeatures deviceFeatures = {};
+		}
+
 
 		bool Window::isKeyPressed(unsigned int keycode) const
 		{
@@ -264,16 +368,17 @@ namespace sa3d {
 			return extensions;
 		}
 
-		//callbacks for vulkan debug
-		static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-			VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-			VkDebugUtilsMessageTypeFlagsEXT messageType,
-			const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-			void* pUserData) {
 
-			std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+		void Window::cleanup() {
+			if (enableValidationLayers) {
+				DestroyDebugUtilsMessengerEXT(instance, callback, nullptr);
+			}
 
-			return VK_FALSE;
+			//vkDestroyInstance(instance, nullptr);
+
+			//glfwDestroyWindow(m_Window);
+
+			glfwTerminate();
 		}
 
 
